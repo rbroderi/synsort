@@ -10,6 +10,8 @@ from pathlib import Path
 from .cache import CacheManager
 from .config import SynsortConfig
 
+_TypeAliasNode = getattr(ast, "TypeAlias", None)
+
 BlockKind = str
 _CATEGORY_GLOBAL = "globals"
 
@@ -59,6 +61,10 @@ class SynSorter:
 
     def process_file(self, path: Path, *, check: bool = False) -> SortResult:
         text = path.read_text(encoding="utf-8")
+        if self._should_skip_file(text):
+            return SortResult(
+                path=path, changed=False, skipped=True, reason="skip-directive"
+            )
         original_digest = _sha256(text)
 
         if self.cache and self.cache.should_skip(
@@ -93,6 +99,8 @@ class SynSorter:
         lines = text.splitlines(keepends=True)
         usage = self._collect_usage(tree)
         blocks, guard_blocks = self._build_top_level_blocks(tree, lines, usage)
+        if blocks:
+            self._propagate_dependencies(blocks)
         main_blocks: list[CodeBlock] = []
         if guard_blocks:
             main_blocks = [
@@ -114,6 +122,7 @@ class SynSorter:
         segments = self._build_segments(blocks, lines, indent="")
         if segments:
             self._coalesce_module_sections(segments)
+            segments = self._merge_module_segments(segments, lines)
 
         rebuilt: list[str] = []
         module_seen: set[str] = set()
@@ -132,6 +141,10 @@ class SynSorter:
         if guard_blocks:
             new_text = self._append_guards(new_text, guard_blocks, main_blocks)
         return new_text, new_text != text
+
+    def _should_skip_file(self, text: str) -> bool:
+        marker = "synsort: skip-file"
+        return marker in text.lower()
 
     def _build_top_level_blocks(
         self,
@@ -169,6 +182,8 @@ class SynSorter:
             return self._build_function_block(node, lines, usage, is_method=False)
         if isinstance(node, ast.ClassDef):
             return self._build_class_block(node, lines, usage)
+        if _TypeAliasNode is not None and isinstance(node, _TypeAliasNode):
+            return self._build_type_alias_block(node, lines, usage)
         if isinstance(node, (ast.Assign, ast.AnnAssign)):
             return self._build_global_block(node, lines, usage)
         return None
@@ -191,6 +206,33 @@ class SynSorter:
         return CodeBlock(
             name=name,
             kind="global",
+            category=_CATEGORY_GLOBAL,
+            leading_start=leading_start,
+            end_line=end_line,
+            text=text,
+            usage=usage_score,
+            header_indent="",
+            dependencies=dependencies,
+        )
+
+    def _build_type_alias_block(
+        self,
+        node: ast.TypeAlias,
+        lines: list[str],
+        usage: Counter[str],
+    ) -> CodeBlock | None:  # pragma: no cover - python<3.12 fallback
+        start_line = getattr(node, "lineno", None)
+        end_line = getattr(node, "end_lineno", None)
+        if start_line is None or end_line is None:
+            return None
+        leading_start = self._extend_with_comments(lines, start_line)
+        text = self._slice_text(lines, leading_start, end_line)
+        name = self._type_alias_name(node)
+        usage_score = usage.get(name or "", 0)
+        dependencies = self._collect_name_dependencies(getattr(node, "value", None))
+        return CodeBlock(
+            name=name,
+            kind="typealias",
             category=_CATEGORY_GLOBAL,
             leading_start=leading_start,
             end_line=end_line,
@@ -239,6 +281,10 @@ class SynSorter:
         usage_score = usage.get(node.name, 0)
         kind = "method" if is_method else "function"
         header_indent = indent if is_method else ""
+        dependencies: set[str] = set()
+        if not is_method:
+            dependencies = self._collect_name_dependencies(node)
+            dependencies.discard(node.name)
         return CodeBlock(
             name=node.name,
             kind=kind,
@@ -248,6 +294,7 @@ class SynSorter:
             text=text,
             usage=usage_score,
             header_indent=header_indent,
+            dependencies=dependencies,
         )
 
     def _build_class_block(
@@ -268,6 +315,10 @@ class SynSorter:
         rewritten = self._rewrite_class_body(node, lines, usage, start_line, end_line)
         category = self._categorize_name(node.name)
         usage_score = usage.get(node.name, 0)
+        dependencies = self._collect_class_dependencies(node)
+        body_deps = self._collect_name_dependencies(node)
+        body_deps.discard(node.name)
+        dependencies.update(body_deps)
         return CodeBlock(
             name=node.name,
             kind="class",
@@ -277,6 +328,7 @@ class SynSorter:
             text=rewritten or raw_text,
             usage=usage_score,
             header_indent="",
+            dependencies=dependencies,
         )
 
     def _rewrite_class_body(
@@ -401,6 +453,12 @@ class SynSorter:
             for block in segment.blocks
             if block.name
         }
+        name_to_block: dict[str, CodeBlock] = {
+            block.name: block
+            for segment in module_segments
+            for block in segment.blocks
+            if block.name
+        }
         defined_names: set[str] = set()
 
         for segment in module_segments:
@@ -419,6 +477,16 @@ class SynSorter:
                         deps = block.dependencies.intersection(managed_names)
                         if not deps.issubset(defined_names):
                             can_capture = False
+                        else:
+                            for dep_name in deps:
+                                dep_block = name_to_block.get(dep_name)
+                                if (
+                                    dep_block
+                                    and dep_block.dependencies
+                                    and block_name in dep_block.dependencies
+                                ):
+                                    can_capture = False
+                                    break
 
                     if can_capture:
                         captured_by_category[category].append(block)
@@ -443,6 +511,49 @@ class SynSorter:
             return
 
         first_segment.blocks = insert_sequence + first_segment.blocks
+
+    def _merge_module_segments(
+        self, segments: list[Segment], lines: list[str]
+    ) -> list[Segment]:
+        if not segments:
+            return segments
+        merged: list[Segment] = []
+        pending_blocks: list[CodeBlock] = []
+        start_line = 0
+        end_line = 0
+
+        def _flush_pending() -> None:
+            nonlocal pending_blocks, start_line, end_line
+            if not pending_blocks:
+                return
+            merged.append(Segment(start_line, end_line, pending_blocks, indent=""))
+            pending_blocks = []
+
+        for segment in segments:
+            if segment.indent:
+                _flush_pending()
+                merged.append(segment)
+                continue
+
+            if not pending_blocks:
+                start_line = segment.start_line
+                end_line = segment.end_line
+                pending_blocks = list(segment.blocks)
+                continue
+
+            gap_start = end_line + 1
+            gap_end = segment.start_line - 1
+            if self._only_comments_or_whitespace(lines, gap_start, gap_end):
+                pending_blocks.extend(segment.blocks)
+                end_line = segment.end_line
+            else:
+                _flush_pending()
+                start_line = segment.start_line
+                end_line = segment.end_line
+                pending_blocks = list(segment.blocks)
+
+        _flush_pending()
+        return merged
 
     def _extend_segment_start(self, start_line: int, lines: list[str]) -> int:
         index = start_line - 2
@@ -606,6 +717,8 @@ class SynSorter:
         priority = 100
         if method_segment and block.kind == "method":
             priority = self._method_priority(block.name)
+        elif not method_segment and block.kind == "typealias":
+            priority = 0
         return (priority, -block.usage, block.name or "", block.leading_start)
 
     def _apply_dependency_ordering(self, blocks: list[CodeBlock]) -> list[CodeBlock]:
@@ -632,7 +745,7 @@ class SynSorter:
                     dep_block
                     and id(dep_block) in block_ids
                     and dep_block is not block
-                    and dep_block.kind in {"function", "class"}
+                    and dep_block.kind in {"function", "class", "typealias", "global"}
                 ):
                     graph[id(dep_block)].append(block)
                     indegree[id(block)] += 1
@@ -755,6 +868,12 @@ class SynSorter:
                 target = node.target.id
         return target
 
+    def _type_alias_name(self, node: ast.TypeAlias) -> str | None:  # pragma: no cover
+        alias = getattr(node, "name", None)
+        if isinstance(alias, ast.Name):
+            return alias.id
+        return None
+
     def _extract_global_dependencies(self, node: ast.AST) -> set[str]:
         value: ast.AST | None = None
         if isinstance(node, ast.Assign):
@@ -765,14 +884,87 @@ class SynSorter:
             return set()
         return self._collect_name_dependencies(value)
 
-    def _collect_name_dependencies(self, node: ast.AST) -> set[str]:
+    def _collect_class_dependencies(self, node: ast.ClassDef) -> set[str]:
+        dependencies: set[str] = set()
+        for base in node.bases:
+            name = self._class_dependency_name(base)
+            if name:
+                dependencies.add(name)
+        for keyword in node.keywords:
+            if keyword.arg is None:
+                continue
+            name = self._class_dependency_name(keyword.value)
+            if name:
+                dependencies.add(name)
+        return dependencies
+
+    def _propagate_dependencies(self, blocks: list[CodeBlock]) -> None:
+        name_to_block: dict[str, CodeBlock] = {
+            block.name: block for block in blocks if block.name
+        }
+        changed = True
+        while changed:
+            changed = False
+            for block in blocks:
+                if not block.name or not block.dependencies:
+                    continue
+                additional: set[str] = set()
+                for dep_name in list(block.dependencies):
+                    dep_block = name_to_block.get(dep_name)
+                    if dep_block and dep_block is not block and dep_block.dependencies:
+                        additional.update(dep_block.dependencies)
+                if block.name in additional:
+                    additional.discard(block.name)
+                before = len(block.dependencies)
+                block.dependencies.update(additional)
+                if len(block.dependencies) != before:
+                    changed = True
+
+    def _class_dependency_name(self, expr: ast.AST) -> str | None:
+        if isinstance(expr, ast.Name):
+            return expr.id
+        return None
+
+    def _collect_name_dependencies(self, node: ast.AST | None) -> set[str]:
         names: set[str] = set()
+        if node is None:
+            return names
 
         class NameCollector(ast.NodeVisitor):
             def visit_Name(self, name_node: ast.Name) -> None:  # type: ignore[override]
                 if isinstance(name_node.ctx, ast.Load):
                     names.add(name_node.id)
                 self.generic_visit(name_node)
+
+            def visit_FunctionDef(self, func_node: ast.FunctionDef) -> None:  # type: ignore[override]
+                for decorator in func_node.decorator_list:
+                    self.visit(decorator)
+                self._visit_arguments(func_node.args)
+                if func_node.returns:
+                    self.visit(func_node.returns)
+
+            def visit_AsyncFunctionDef(  # type: ignore[override]
+                self, func_node: ast.AsyncFunctionDef
+            ) -> None:
+                self.visit_FunctionDef(func_node)
+
+            def _visit_arguments(self, args: ast.arguments) -> None:
+                all_args = (
+                    list(getattr(args, "posonlyargs", []))
+                    + list(args.args)
+                    + ([args.vararg] if args.vararg else [])
+                    + list(args.kwonlyargs)
+                    + ([args.kwarg] if args.kwarg else [])
+                )
+                for arg in all_args:
+                    if arg and getattr(arg, "annotation", None):
+                        self.visit(arg.annotation)
+                for default in args.defaults:
+                    if default:
+                        self.visit(default)
+                for default in args.kw_defaults:
+                    if default:
+                        self.visit(default)
 
         NameCollector().visit(node)
         return names

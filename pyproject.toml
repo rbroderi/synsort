@@ -1,6 +1,6 @@
 [project]
 name = "synsort"
-version = "2025.12.05-1"
+version = "2025.12.05-2"
 description = "Add your description here"
 readme = "README.md"
 authors = [
