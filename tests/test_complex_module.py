@@ -15,6 +15,8 @@ COMPLEX_SOURCE = textwrap.dedent(
 
     import asyncio
     from functools import lru_cache, wraps
+    from pathlib import Path
+    from typing import TYPE_CHECKING
 
     if __name__ == "__main__":
         raise SystemExit(main())
@@ -36,6 +38,17 @@ COMPLEX_SOURCE = textwrap.dedent(
 
     async def bootstrap(config: dict[str, str]) -> None:
         await asyncio.sleep(len(config) / 10)
+
+    def build_pipeline() -> list[int]:
+        return [helper(idx) for idx in range(3)]
+
+    if TYPE_CHECKING:
+        from typing import TypedDict
+
+        class WorkflowSpec(TypedDict):
+            threshold: int
+
+    PIPELINE = build_pipeline()
 
     class Workflow:
         """Docstring with literal braces {CONFIG_PATH!s}."""
@@ -98,6 +111,8 @@ COMPLEX_SOURCE = textwrap.dedent(
                 return f"{first}:{len(rest)}"
             case _:
                 return repr(value)
+
+    CONFIG_PATH = Path(CONFIG_PATH)
     '''
 ).lstrip()
 
@@ -130,6 +145,18 @@ def test_sorter_preserves_syntax_for_complex_module(tmp_path: Path) -> None:
     assert before_guard.endswith(
         'def main() -> int:\n    return _main(["alpha", "beta", "gamma"])'
     )
+    assert text.index("def build_pipeline() -> list[int]:") < text.index(
+        "PIPELINE = build_pipeline()"
+    )
+    assert text.index("PIPELINE = build_pipeline()") < text.index("if TYPE_CHECKING:")
+    assert text.index("CONFIG_PATH = Path(CONFIG_PATH)") > text.index(
+        "if TYPE_CHECKING:"
+    )
+    assert text.count(config.header_for("globals")) == 1
+    assert text.count(config.header_for("public")) == 1
+    assert text.count(sorter._method_header_for("public")) == 1
+    assert text.count(sorter._method_header_for("dunder")) == 1
+    assert text.count(sorter._method_header_for("private")) == 1
 
 
 def test_multiple_main_guards_raise(tmp_path: Path) -> None:
@@ -154,3 +181,30 @@ def test_multiple_main_guards_raise(tmp_path: Path) -> None:
         sorter.process_file(source)
 
     assert source.read_text(encoding="utf-8") == original
+
+
+def test_global_not_moved_when_dependency_defined_later(tmp_path: Path) -> None:
+    source_text = textwrap.dedent(
+        """
+        from typing import TYPE_CHECKING
+
+        ALPHA = 1
+
+        if TYPE_CHECKING:
+            from typing import Protocol
+
+        CONSTANT = build_value()
+
+        def build_value() -> int:
+            return 41 + 1
+        """
+    ).lstrip()
+
+    source = tmp_path / "delayed.py"
+    source.write_text(source_text, encoding="utf-8")
+
+    sorter = SynSorter(SynsortConfig.load(tmp_path))
+    sorter.process_file(source)
+
+    text = source.read_text(encoding="utf-8")
+    assert text.index("CONSTANT = build_value()") > text.index("if TYPE_CHECKING:")

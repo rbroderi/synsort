@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import heapq
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .cache import CacheManager
@@ -27,6 +28,7 @@ class CodeBlock:
     text: str
     usage: int
     header_indent: str
+    dependencies: set[str] = field(default_factory=lambda: set())
 
 
 @dataclass
@@ -110,13 +112,17 @@ class SynSorter:
             self._clear_range(lines, special.leading_start, special.end_line)
 
         segments = self._build_segments(blocks, lines, indent="")
+        if segments:
+            self._coalesce_module_sections(segments)
 
         rebuilt: list[str] = []
+        module_seen: set[str] = set()
         if segments:
             cursor = 1
             for segment in segments:
                 rebuilt.append("".join(lines[cursor - 1 : segment.start_line - 1]))
-                rebuilt.append(self._render_segment(segment))
+                seen = module_seen if not segment.indent else None
+                rebuilt.append(self._render_segment(segment, seen_categories=seen))
                 cursor = segment.end_line + 1
             rebuilt.append("".join(lines[cursor - 1 :]))
         else:
@@ -181,6 +187,7 @@ class SynSorter:
         text = self._slice_text(lines, leading_start, end_line)
         name = self._assignment_name(node)
         usage_score = usage.get(name or "", 0)
+        dependencies = self._extract_global_dependencies(node)
         return CodeBlock(
             name=name,
             kind="global",
@@ -190,6 +197,7 @@ class SynSorter:
             text=text,
             usage=usage_score,
             header_indent="",
+            dependencies=dependencies,
         )
 
     def _build_guard_block(self, node: ast.If, lines: list[str]) -> CodeBlock | None:
@@ -301,7 +309,7 @@ class SynSorter:
                 cursor = leading_start
                 for segment in segments:
                     rebuilt.append("".join(lines[cursor - 1 : segment.start_line - 1]))
-                    rebuilt.append(self._render_segment(segment))
+                    rebuilt.append(self._render_segment(segment, seen_categories=None))
                     cursor = segment.end_line + 1
                 rebuilt.append("".join(lines[cursor - 1 : end_line]))
                 class_text = "".join(rebuilt)
@@ -374,6 +382,68 @@ class SynSorter:
 
         return segments
 
+    def _coalesce_module_sections(self, segments: list[Segment]) -> None:
+        module_segments = [segment for segment in segments if not segment.indent]
+        if not module_segments:
+            return
+
+        categories = ["globals", "dunder", "public", "private"]
+        first_segment = module_segments[0]
+        captured_by_category: dict[str, list[CodeBlock]] = {
+            category: [] for category in categories
+        }
+        seen_by_category: dict[str, set[str]] = {
+            category: set() for category in categories
+        }
+        managed_names: set[str] = {
+            block.name
+            for segment in module_segments
+            for block in segment.blocks
+            if block.name
+        }
+        defined_names: set[str] = set()
+
+        for segment in module_segments:
+            remaining: list[CodeBlock] = []
+            for block in segment.blocks:
+                block_name = block.name
+                category = block.category
+
+                if (
+                    category in categories
+                    and block_name
+                    and block_name not in seen_by_category[category]
+                ):
+                    can_capture = True
+                    if block.kind == "global":
+                        deps = block.dependencies.intersection(managed_names)
+                        if not deps.issubset(defined_names):
+                            can_capture = False
+
+                    if can_capture:
+                        captured_by_category[category].append(block)
+                        seen_by_category[category].add(block_name)
+                        defined_names.add(block_name)
+                        continue
+
+                if category in categories and block_name:
+                    seen_by_category[category].add(block_name)
+
+                remaining.append(block)
+                if block_name:
+                    defined_names.add(block_name)
+
+            segment.blocks = remaining
+
+        insert_sequence: list[CodeBlock] = []
+        for category in categories:
+            insert_sequence.extend(captured_by_category[category])
+
+        if not insert_sequence:
+            return
+
+        first_segment.blocks = insert_sequence + first_segment.blocks
+
     def _extend_segment_start(self, start_line: int, lines: list[str]) -> int:
         index = start_line - 2
         while index >= 0:
@@ -389,27 +459,81 @@ class SynSorter:
             break
         return start_line
 
-    def _render_segment(self, segment: Segment) -> str:
-        parts: list[str] = []
+    def _render_segment(
+        self, segment: Segment, *, seen_categories: set[str] | None = None
+    ) -> str:
+        if not segment.blocks:
+            return ""
+
         is_method_segment = bool(segment.blocks and segment.blocks[0].kind == "method")
+
+        def sort_blocks(blocks: list[CodeBlock]) -> list[CodeBlock]:
+            return sorted(
+                blocks, key=lambda b: self._block_sort_key(b, is_method_segment)
+            )
+
+        blocks_by_category: dict[str, list[CodeBlock]] = {}
+        for block in segment.blocks:
+            blocks_by_category.setdefault(block.category, []).append(block)
+
+        ordered_blocks: list[CodeBlock] = []
+        order_seen: set[str] = set()
         for category in self.config.order:
-            category_blocks = [b for b in segment.blocks if b.category == category]
-            if not category_blocks:
-                continue
-            parts.append(f"{segment.indent}{self.config.header_for(category)}\n")
-            for idx, block in enumerate(
-                sorted(
-                    category_blocks,
-                    key=lambda b: self._block_sort_key(b, is_method_segment),
-                )
-            ):
-                block_text = block.text.rstrip()
-                parts.append(f"{block_text}\n")
-                if idx != len(category_blocks) - 1:
+            category_blocks = blocks_by_category.get(category)
+            if category_blocks:
+                ordered_blocks.extend(sort_blocks(category_blocks))
+                order_seen.add(category)
+
+        extra_categories = [
+            category
+            for category in blocks_by_category.keys()
+            if category not in order_seen
+        ]
+        for category in sorted(extra_categories):
+            ordered_blocks.extend(sort_blocks(blocks_by_category[category]))
+
+        resolved_blocks = self._apply_dependency_ordering(ordered_blocks)
+
+        parts: list[str] = []
+        last_category: str | None = None
+        for block in resolved_blocks:
+            category = block.category
+            if category != last_category:
+                emit_header = True
+                if seen_categories is not None:
+                    if category in seen_categories:
+                        emit_header = False
+                    else:
+                        seen_categories.add(category)
+                if emit_header:
+                    if parts and not parts[-1].endswith("\n\n"):
+                        parts.append("\n")
+                    header_text = self.config.header_for(category)
+                    if is_method_segment:
+                        header_text = self._method_header_for(category)
+                    parts.append(f"{segment.indent}{header_text}\n")
+                elif parts and not parts[-1].endswith("\n\n"):
                     parts.append("\n")
-            parts.append("\n")
+                last_category = category
+            block_text = block.text.rstrip()
+            parts.append(f"{block_text}\n\n")
+
         rendered = "".join(parts).rstrip()
         return f"{rendered}\n\n" if rendered else ""
+
+    def _method_header_for(self, category: str) -> str:
+        base = self.config.header_for(category)
+        replacements = {
+            "Members": "Methods",
+            "members": "methods",
+            "Functions": "Methods",
+            "functions": "methods",
+        }
+        for needle, replacement in replacements.items():
+            if needle in base:
+                head, tail = base.rsplit(needle, 1)
+                return f"{head}{replacement}{tail}"
+        return f"{base} (methods)"
 
     def _extend_with_comments(self, lines: list[str], start_line: int) -> int:
         index = start_line - 2
@@ -484,6 +608,53 @@ class SynSorter:
             priority = self._method_priority(block.name)
         return (priority, -block.usage, block.name or "", block.leading_start)
 
+    def _apply_dependency_ordering(self, blocks: list[CodeBlock]) -> list[CodeBlock]:
+        if not blocks:
+            return blocks
+
+        name_to_block: dict[str, CodeBlock] = {}
+        order_index: dict[int, int] = {}
+        block_ids = {id(block) for block in blocks}
+        for idx, block in enumerate(blocks):
+            order_index[id(block)] = idx
+            if block.name and block.name not in name_to_block:
+                name_to_block[block.name] = block
+
+        graph: dict[int, list[CodeBlock]] = {id(block): [] for block in blocks}
+        indegree: dict[int, int] = {id(block): 0 for block in blocks}
+
+        for block in blocks:
+            if not block.dependencies:
+                continue
+            for dep_name in block.dependencies:
+                dep_block = name_to_block.get(dep_name)
+                if (
+                    dep_block
+                    and id(dep_block) in block_ids
+                    and dep_block is not block
+                    and dep_block.kind in {"function", "class"}
+                ):
+                    graph[id(dep_block)].append(block)
+                    indegree[id(block)] += 1
+
+        heap: list[tuple[int, CodeBlock]] = []
+        for block in blocks:
+            if indegree[id(block)] == 0:
+                heapq.heappush(heap, (order_index[id(block)], block))
+
+        resolved: list[CodeBlock] = []
+        while heap:
+            _, block = heapq.heappop(heap)
+            resolved.append(block)
+            for neighbor in graph[id(block)]:
+                indegree[id(neighbor)] -= 1
+                if indegree[id(neighbor)] == 0:
+                    heapq.heappush(heap, (order_index[id(neighbor)], neighbor))
+
+        if len(resolved) != len(blocks):
+            return blocks
+        return resolved
+
     def _main_block_sort_key(self, block: CodeBlock) -> tuple[int, int]:
         order = 0 if block.name == "_main" else 1
         return (order, block.leading_start)
@@ -508,6 +679,8 @@ class SynSorter:
         start_line = getattr(node, "lineno", None)
         end_line = getattr(node, "end_lineno", None)
         if start_line is None or end_line is None:
+            return None
+        if start_line < 1 or start_line - 1 >= len(lines):
             return None
         leading_start = self._extend_with_comments(lines, start_line)
         text = self._slice_text(lines, leading_start, end_line)
@@ -582,6 +755,28 @@ class SynSorter:
                 target = node.target.id
         return target
 
+    def _extract_global_dependencies(self, node: ast.AST) -> set[str]:
+        value: ast.AST | None = None
+        if isinstance(node, ast.Assign):
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            value = node.value
+        if value is None:
+            return set()
+        return self._collect_name_dependencies(value)
+
+    def _collect_name_dependencies(self, node: ast.AST) -> set[str]:
+        names: set[str] = set()
+
+        class NameCollector(ast.NodeVisitor):
+            def visit_Name(self, name_node: ast.Name) -> None:  # type: ignore[override]
+                if isinstance(name_node.ctx, ast.Load):
+                    names.add(name_node.id)
+                self.generic_visit(name_node)
+
+        NameCollector().visit(node)
+        return names
+
     def _is_main_guard(self, node: ast.If) -> bool:
         if not isinstance(node.test, ast.Compare):
             return False
@@ -597,8 +792,6 @@ class SynSorter:
         def _is_main_literal(expr: ast.AST) -> bool:
             if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
                 return expr.value == "__main__"
-            if isinstance(expr, ast.Str):  # pragma: no cover - Py<3.8 compat
-                return expr.s == "__main__"
             return False
 
         left = node.test.left

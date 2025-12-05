@@ -8,10 +8,10 @@ from pathlib import Path
 
 DEFAULT_ORDER: list[str] = ["globals", "dunder", "public", "private"]
 DEFAULT_HEADERS: dict[str, str] = {
-    "globals": "# --- Globals ---",
-    "dunder": "# --- Dunder Members ---",
-    "public": "# --- Public Members ---",
-    "private": "# --- Private Members ---",
+    "globals": "################################# Globals #################################",
+    "dunder": "################################# Dunder Members #################################",
+    "public": "################################# Public Members #################################",
+    "private": "################################# Private Members #################################",
 }
 
 
