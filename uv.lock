@@ -1,0 +1,128 @@
+version = 1
+revision = 1
+requires-python = ">=3.13"
+
+[[package]]
+name = "colorama"
+version = "0.4.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335 },
+]
+
+[[package]]
+name = "iniconfig"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484 },
+]
+
+[[package]]
+name = "packaging"
+version = "25.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/d4/1fc4078c65507b51b96ca8f8c3ba19e6a61c8253c72794544580a7b6c24d/packaging-25.0.tar.gz", hash = "sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f", size = 165727 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/12/38679034af332785aac8774540895e234f4d07f7545804097de4b666afd8/packaging-25.0-py3-none-any.whl", hash = "sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484", size = 66469 },
+]
+
+[[package]]
+name = "pluggy"
+version = "1.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe6ef3fa267035b518369d9511ffab804f839851d2779/pluggy-1.6.0.tar.gz", hash = "sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3", size = 69412 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538 },
+]
+
+[[package]]
+name = "pygments"
+version = "2.19.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/77/a5b8c569bf593b0140bde72ea885a803b82086995367bf2037de0159d924/pygments-2.19.2.tar.gz", hash = "sha256:636cb2477cec7f8952536970bc533bc43743542f70392ae026374600add5b887", size = 4968631 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c7/21/705964c7812476f378728bdf590ca4b771ec72385c533964653c68e86bdc/pygments-2.19.2-py3-none-any.whl", hash = "sha256:86540386c03d588bb81d44bc3928634ff26449851e99741617ecb9037ee5ec0b", size = 1225217 },
+]
+
+[[package]]
+name = "pytest"
+version = "9.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/07/56/f013048ac4bc4c1d9be45afd4ab209ea62822fb1598f40687e6bf45dcea4/pytest-9.0.1.tar.gz", hash = "sha256:3e9c069ea73583e255c3b21cf46b8d3c56f6e3a1a8f6da94ccb0fcf57b9d73c8", size = 1564125 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/8b/6300fb80f858cda1c51ffa17075df5d846757081d11ab4aa35cef9e6258b/pytest-9.0.1-py3-none-any.whl", hash = "sha256:67be0030d194df2dfa7b556f2e56fb3c3315bd5c8822c6951162b92b32ce7dad", size = 373668 },
+]
+
+[[package]]
+name = "pyupgrade"
+version = "3.21.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tokenize-rt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7f/a1/dc63caaeed232b1c58eae1b7a75f262d64ab8435882f696ffa9b58c0c415/pyupgrade-3.21.2.tar.gz", hash = "sha256:1a361bea39deda78d1460f65d9dd548d3a36ff8171d2482298539b9dc11c9c06", size = 45455 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/8c/433dac11910989a90c40b10149d07ef7224232236971a562d3976790ec53/pyupgrade-3.21.2-py2.py3-none-any.whl", hash = "sha256:2ac7b95cbd176475041e4dfe8ef81298bd4654a244f957167bd68af37d52be9f", size = 62814 },
+]
+
+[[package]]
+name = "rust-just"
+version = "1.43.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/60/f3c0d2c557f89d607fef543e64f7088056484cc0ea0b4e9681b217da72e8/rust_just-1.43.1.tar.gz", hash = "sha256:dc7ab2efd8259cdcd80eff1514f7e859772bfafb21842effff870dbed2107663", size = 1428118 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a8/24/c5b87694c7d33848f820f016c3dd5aed6150d946d60a6e606a0e5165a084/rust_just-1.43.1-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:6fe8204a2c230abd2b3b946b3246e1f9ed80ee40de16473ede5ebdf0ded9454a", size = 1678997 },
+    { url = "https://files.pythonhosted.org/packages/23/b2/45c6925f7851c65436d5b8a75bc378921624a550d4ce296a1723a1b3f369/rust_just-1.43.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:04f8bd5fabcdebe8bf03d93b12352ab54ae3d831d317240be5cca7272173151d", size = 1561329 },
+    { url = "https://files.pythonhosted.org/packages/9f/a8/11f1418448d579c2e5fb99d7f26b15120292bd5032a3f091da8757e09cb6/rust_just-1.43.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:92781d23ce0e5d5815a0e43af97e44ce52d0ca2817c3e0bf4824795bc8db7516", size = 1645638 },
+    { url = "https://files.pythonhosted.org/packages/86/fd/5b3098d3dd442f21a25b51c9a94e82d2602a62f1d3f09c2587e5f2583f3c/rust_just-1.43.1-py3-none-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:cde7c8cc0b77bd7c41c24587532b7dad1a44caa396aa2766abbcf5a424a1ac5c", size = 1616029 },
+    { url = "https://files.pythonhosted.org/packages/8a/c9/7dfec9cc246d9c94f14bdbd477650c5dbe5b9a71a2891e0c6c70b1e97c04/rust_just-1.43.1-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:5019283f827947b5ad8cf9947553595a1810474c56a4d15e9987d33bb05ae4c3", size = 1787480 },
+    { url = "https://files.pythonhosted.org/packages/e2/a5/96167b70fccc7d345309edb3971a40131dd2aca130c107a849572704b742/rust_just-1.43.1-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:c703f8383f6fc535a164f2cb3122ffa6e9c6c5d4b89c355f032e15623b344205", size = 1863173 },
+    { url = "https://files.pythonhosted.org/packages/eb/5e/05f537cba29a595748273f30cf3dc8757f633f25dd45464a6caca458c2f2/rust_just-1.43.1-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:478c90550ac0a287ac76e05381f57b41eedbe53956b227f176a76e5074e5aceb", size = 1855852 },
+    { url = "https://files.pythonhosted.org/packages/33/cc/77639b3a75edd92ea48ac1626c8b45d40ba0f2f498aad319747ad4a71c46/rust_just-1.43.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:31e0e695d215382bbc23f06e7ee0df138712bcce238dc027543e26173a23df31", size = 1771522 },
+    { url = "https://files.pythonhosted.org/packages/c6/72/a3778b9b3ee34e11c3a83df1e8ce862262158a6219efe514458cf9f1342e/rust_just-1.43.1-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:0c75cd479dc624cee83db8765a453f4ff174c71d71a90c723ba076d998d9834e", size = 1659934 },
+    { url = "https://files.pythonhosted.org/packages/a2/1c/6fec8e79007620137d33c5dcda463713a73338b02c5cfe15cc5e9d8a47b2/rust_just-1.43.1-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:f9665c00a3bb852aed1f3966ccfe50799c1db9b17841566db7fc1f99e5bbf4cd", size = 1636577 },
+    { url = "https://files.pythonhosted.org/packages/1c/5b/f40f6baa92014a039e75df14512505cebbeaf9df79c7305e4e8d2d21b26f/rust_just-1.43.1-py3-none-musllinux_1_2_i686.whl", hash = "sha256:a1dbd5b1634d40ccdfe493edd2d620a6bffbe85e410ddd2acdd929789bcde1fe", size = 1781292 },
+    { url = "https://files.pythonhosted.org/packages/a3/ab/7374bf4300b00fac5934e34c483a08ff2fdf7e99ce1146140e2e2e64ff05/rust_just-1.43.1-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:89ba22d438cad2356f80f45c670d794537ef59631c09dfd4938bf5cc3440975b", size = 1838422 },
+    { url = "https://files.pythonhosted.org/packages/61/d1/176231f6f0fac1ce300977ccfa45eae018a53ee0e5155a3be0b4dc2beb2d/rust_just-1.43.1-py3-none-win32.whl", hash = "sha256:9246f3aff7b55c452ea515d5c31b244bc709d86e31ac7c5cd5e18af8d1258989", size = 1567308 },
+    { url = "https://files.pythonhosted.org/packages/8b/c7/6c818dcac06844608244855753a0afb367365661b40fe6b3288bc26726a6/rust_just-1.43.1-py3-none-win_amd64.whl", hash = "sha256:28f0d898d3e04846348277a4d47231c949398102c2f6f452f52ba6506c9c7572", size = 1731800 },
+]
+
+[[package]]
+name = "synsort"
+version = "0.1.0"
+source = { editable = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pyupgrade" },
+    { name = "rust-just" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.1" },
+    { name = "pyupgrade", specifier = ">=3.21.2" },
+    { name = "rust-just", specifier = ">=1.43.1" },
+]
+
+[[package]]
+name = "tokenize-rt"
+version = "6.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/ed/8f07e893132d5051d86a553e749d5c89b2a4776eb3a579b72ed61f8559ca/tokenize_rt-6.2.0.tar.gz", hash = "sha256:8439c042b330c553fdbe1758e4a05c0ed460dbbbb24a606f11f0dee75da4cad6", size = 5476 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/f0/3fe8c6e69135a845f4106f2ff8b6805638d4e85c264e70114e8126689587/tokenize_rt-6.2.0-py2.py3-none-any.whl", hash = "sha256:a152bf4f249c847a66497a4a95f63376ed68ac6abf092a2f7cfb29d044ecff44", size = 6004 },
+]

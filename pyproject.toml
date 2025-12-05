@@ -1,0 +1,24 @@
+[project]
+name = "synsort"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "rbroderi", email = "richard.broderick@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+synsort = "synsort.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+    "pyupgrade>=3.21.2",
+    "rust-just>=1.43.1",
+]
