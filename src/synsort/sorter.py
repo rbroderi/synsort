@@ -510,6 +510,12 @@ class SynSorter:
         if not insert_sequence:
             return
 
+        inserted_ids = {id(block) for block in insert_sequence}
+        for segment in module_segments:
+            segment.blocks = [
+                block for block in segment.blocks if id(block) not in inserted_ids
+            ]
+
         first_segment.blocks = insert_sequence + first_segment.blocks
 
     def _merge_module_segments(
@@ -518,16 +524,16 @@ class SynSorter:
         if not segments:
             return segments
         merged: list[Segment] = []
-        pending_blocks: list[CodeBlock] = []
+        pending_blocks: list[CodeBlock] | None = None
         start_line = 0
         end_line = 0
 
         def _flush_pending() -> None:
             nonlocal pending_blocks, start_line, end_line
-            if not pending_blocks:
+            if pending_blocks is None:
                 return
             merged.append(Segment(start_line, end_line, pending_blocks, indent=""))
-            pending_blocks = []
+            pending_blocks = None
 
         for segment in segments:
             if segment.indent:
@@ -535,7 +541,7 @@ class SynSorter:
                 merged.append(segment)
                 continue
 
-            if not pending_blocks:
+            if pending_blocks is None:
                 start_line = segment.start_line
                 end_line = segment.end_line
                 pending_blocks = list(segment.blocks)

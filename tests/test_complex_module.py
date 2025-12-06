@@ -117,6 +117,110 @@ COMPLEX_SOURCE = textwrap.dedent(
 ).lstrip()
 
 
+EXTREME_SOURCE = textwrap.dedent(
+    '''
+    """Stress-case module exercising tricky syntax combinations."""
+
+    from __future__ import annotations
+
+    import asyncio
+    import contextlib
+    from dataclasses import dataclass
+    from functools import singledispatch
+    from typing import TYPE_CHECKING, Any, Callable, Protocol
+
+    __all__ = ["Pipeline", "build_handlers", "route_payload"]
+
+    PIPELINE_LABEL = "extreme"
+
+    type HandlerFactory = Callable[[str], "BaseHandler"]
+    type StepSpec = dict[str, Callable[[int], int]]
+
+    if TYPE_CHECKING:
+        from collections.abc import AsyncIterator
+
+        class SupportsClose(Protocol):
+            def close(self) -> None: ...
+
+    @dataclass(slots=True)
+    class Config:
+        retries: int
+        jitter: float
+
+    CONFIG = Config(retries=3, jitter=0.5)
+
+    class BaseHandler:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def handle(self, payload: str) -> str:
+            return payload.upper()
+
+    class Pipeline:
+        __slots__ = ("handlers",)
+
+        def __init__(self, handlers: list[BaseHandler]) -> None:
+            self.handlers = handlers
+
+        async def drain(self, queue: asyncio.Queue[str]) -> list[str]:
+            results: list[str] = []
+            while chunk := await queue.get():
+                results.append(chunk)
+                if queue.empty():
+                    break
+            return results
+
+        def _ensure(self, payload: str) -> str:
+            return payload or self.handlers[0].name
+
+    def build_handlers(factory: HandlerFactory) -> list[BaseHandler]:
+        return [factory("alpha"), factory("beta")]
+
+    def _make(name: str) -> BaseHandler:
+        return BaseHandler(name)
+
+    REGISTRY: dict[str, HandlerFactory] = {name: _make for name in ("alpha", "beta")}
+
+    @contextlib.contextmanager
+    def manage(resource: SupportsClose | None):
+        try:
+            yield resource
+        finally:
+            if resource is not None:
+                resource.close()
+
+    @singledispatch
+    def route_payload(value: object) -> str:
+        if isinstance(value, dict):
+            match value:
+                case {"kind": kind, **rest}:
+                    return kind
+        return str(value)
+
+    @route_payload.register(int)
+    def _(value: int) -> str:
+        return f"int:{value}"
+
+    async def stream(iterator: AsyncIterator[str]) -> list[str]:
+        collected: list[str] = []
+        async for item in iterator:
+            collected.append(item)
+        return collected
+
+    def _main() -> int:
+        return len(REGISTRY)
+
+    def main() -> int:
+        return _main()
+
+    PIPELINE = Pipeline(build_handlers(_make))
+
+    if __name__ == "__main__":
+        raise SystemExit(main())
+    '''
+).lstrip()
+
+
 def test_sorter_preserves_syntax_for_complex_module(tmp_path: Path) -> None:
     source = tmp_path / "complex_module.py"
     source.write_text(COMPLEX_SOURCE, encoding="utf-8")
@@ -208,3 +312,34 @@ def test_global_not_moved_when_dependency_defined_later(tmp_path: Path) -> None:
 
     text = source.read_text(encoding="utf-8")
     assert text.index("CONSTANT = build_value()") > text.index("if TYPE_CHECKING:")
+
+
+def test_sorter_handles_extreme_constructs(tmp_path: Path) -> None:
+    source = tmp_path / "extreme_module.py"
+    source.write_text(EXTREME_SOURCE, encoding="utf-8")
+
+    sorter = SynSorter(SynsortConfig.load(tmp_path))
+    result = sorter.process_file(source)
+    text = source.read_text(encoding="utf-8")
+
+    compile(text, str(source), "exec")
+    assert not result.skipped
+
+    assert text.count("__all__ = ") == 1
+    assert "route_payload" in text.split("__all__ =", 1)[1]
+
+    assert 'type HandlerFactory = Callable[[str], "BaseHandler"]' in text
+    assert text.count("if TYPE_CHECKING:") == 1
+
+    assert text.index("def _make(") < text.index("REGISTRY: dict[str, HandlerFactory]")
+
+    decorator_idx = text.index("@contextlib.contextmanager")
+    assert decorator_idx < text.index("def manage(")
+
+    assert "@route_payload.register(int)" in text
+    assert text.index("@route_payload.register(int)") < text.index("def _(value: int)")
+
+    pipeline_idx = text.index("class Pipeline")
+    assert pipeline_idx < text.index("PIPELINE = Pipeline")
+
+    assert "match value:" in text

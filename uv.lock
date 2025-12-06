@@ -99,7 +99,7 @@ wheels = [
 
 [[package]]
 name = "synsort"
-version = "2025.12.5.post1"
+version = "2025.12.5.post2"
 source = { editable = "." }
 
 [package.dev-dependencies]
